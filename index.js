@@ -1,8 +1,9 @@
 // We use the promise library because it allows us to run in series.
 const Promise = require('bluebird');
-const PEG = require('pegjs');
+const parser = require('./parser');
+const Browser = require('zombie');
 
-const script = `get /
+const scriptText = `get /
 fill username bill
 fill password password
 pressButton Login
@@ -10,65 +11,8 @@ get /links
 `;
 //  times 3 ( get / )
 
-const parserArguments = `
-start 
-  = nl* first:line rest:(nl+ data:line { return data; })* nl* { 
-    rest.unshift(first); return rest;
-  }
-    
-line = space first:command tail:(" " argument)* {
-  var params = [];
-  for (var i = 0; i < tail.length; i++) {
-    params.push(tail[i][1]);
-  }
-  return {type:'CallExpression', operator:first, params: params}
-}
-//
-argument "argument"
-  = func / JSON / number / string
-command "command"
-= head:[^\\t\\n\\r )]* {
-  return {type:"word", name:head.join("")};
-}
-func = "(" space space first:command tail:(" " argument)* space ")" {
-  var params = [];
-  for (var i = 0; i < tail.length; i++) {
-    params.push(tail[i][1]);
-  }
-  return {type:'DelayExpression', operator:first, params: params}
-
- }
-string "string" = s:[^\\t\\n\\r() ]+ {
-  return {type:"value", value:s.join("")};
-}
-number "number" = num:[0-9]+ {
-return {type: "value", value:parseInt(num.join(""), 10)};
-}
-comment "comment"
- = "#"+ [^\\n\\r]* { return ''; }
-JSON = head:("{" $[^}]* "}") { 
-  return {type:"value", value:head.join("")};
-}
-space "space" 
-  = [ ]*
-_ "whitespace"
-  = [ \\t\\n\\r]*
-nl "newline"
- = [\\n\\r]
-`;
-
-const parser = PEG.buildParser(parserArguments.trim());
-
-const actions = parser.parse(script.trim());
-
-console.log(actions);
-
-const Browser = require('zombie');
-Browser.localhost('localhost', 3000);
-
-const browser = new Browser();
-
 const env = {
+  responseTimes: [],
   multi: (arg1, arg2) => new Promise((resolve, reject) => resolve(arg1 * arg2)),
   plus: (arg1, arg2) => new Promise((resolve, reject) => resolve(arg1 + arg2)),
   times: (times, expr) => {
@@ -81,23 +25,52 @@ const env = {
       return Promise.resolve(promiseList);
     })
     .mapSeries((a) => evaluate(a))
-    .then((added) => Promise.resolve(browser));
+    .then((added) => Promise.resolve(env.browser));
   },
   get: (path) =>
     new Promise((resolve, reject) => {
       console.log('visiting:', path);
-      browser.visit(path).then(() => resolve(browser));
+      const startTime = new Date();
+      env.browser.visit(path).then((blah) => {
+        // path,
+        // statusCode: res.statusCode,
+        // elapsedTime: res.elapsedTime,
+        // dataSizeInBytes: res.scenario_length,
+        // httpVerb: 'GET',
+        // console.log(env.browser.request);
+        // console.log(path, env.browser.response.status, '', env.browser.request.method);
+        const endTime = new Date();
+        env.responseTimes.push({
+          path: env.browser.request.url,
+          statusCode: env.browser.response.status,
+          elapsedTime: endTime - startTime,
+          dataSizeInBytes: 0,
+          httpVerb: env.browser.request.method,
+        });
+        resolve(env.browser);
+      });
     }),
   fill: (selector, value) =>
     new Promise((resolve, reject) => {
       console.log('filling:', selector, 'with ', value);
-      browser.fill(selector, value);
-      resolve(browser);
+      env.browser.fill(selector, value);
+      resolve(env.browser);
     }),
   pressButton: (selector) =>
     new Promise((resolve, reject) => {
       console.log('pressing:', selector);
-      browser.pressButton(selector).then(() => resolve(browser));
+      const startTime = new Date();
+      env.browser.pressButton(selector).then(() => {
+        const endTime = new Date();
+        env.responseTimes.push({
+          path: env.browser.request.url,
+          statusCode: env.browser.response.status,
+          elapsedTime: endTime - startTime,
+          dataSizeInBytes: 0,
+          httpVerb: env.browser.request.method,
+        });
+        resolve(env.browser);
+      });
     }),
 };
 
@@ -129,11 +102,30 @@ const evaluate = (action) => {
   return Promise.reject('Unknown type: ${action.type}');
 };
 
+const run = (host, script) => {
+  env.browser = new Browser({ site: host });
+
+  const actions = parser.parse(script.trim());
+
+  console.log(actions);
+
 // console.log(sequence(actions));
-Promise.mapSeries(actions,
-  (action) => {
-    console.log('evaluating:', action.operator.name);
-    return evaluate(action).then((ret) => console.log(ret.location._url));
-  })
-  .then((data) => console.log('result:', data))
-  .catch((fail) => console.log('failed for reason', fail));
+  return Promise.mapSeries(actions,
+    (action) => {
+      console.log('evaluating:', action.operator.name);
+      return evaluate(action).then((ret) => {
+        // console.log(ret.response.time - ret.request.time);
+        // console.log(ret.location._url)
+        // ret.dump();
+        return Promise.resolve('hi');
+      });
+    });
+    // .then((data) => console.log('result:', data))
+    // .catch((fail) => console.log('failed for reason', fail));
+};
+
+//  module.exports = { parseTest, run };
+
+run('http://localhost:3000', scriptText)
+.then((data) => console.log('data:', env.responseTimes))
+.catch((err) => console.log('err', err));
