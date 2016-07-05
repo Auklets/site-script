@@ -5,27 +5,65 @@ const Browser = require('zombie');
 
 // TODO:
 // tests
-// remove size.
 // delay 3
 // for loop?
 // variables.
 // ( { ?
+//
+//  Implement scoping
+// write a script to test our own site
 
-const scriptText = `get /
-fill username bill
-fill password password
-pressButton Login
-get /links
-times 3 ( get / )
+
+// get /
+// fill username bill
+// fill password password
+// pressButton Login
+// get /links
+
+const scriptText = `
+set x 2
+if(lte $x 4) {
+log bill
+}
+log $x
 `;
+//
+// Test the parse of the string.  Returns an object with
+// {success: true || false }
+// If there is a failure, inlcude error, line and column in return object
+const parseTest = (str) => {
+  try {
+    parser.parse(str.trim());
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err.message,
+      line: err.location.start.line,
+      column: err.location.start.column,
+    };
+  }
+};
 
 
-const env = {
+const globalEnv = {
   responseTimes: [],
-  multi: (arg1, arg2) => new Promise((resolve, reject) => resolve(arg1 * arg2)),
-  plus: (arg1, arg2) => new Promise((resolve, reject) => resolve(arg1 + arg2)),
-  times: (times, expr) => {
-    console.log('expr', expr);
+  mult: (arg1, arg2, env) => new Promise((resolve, reject) => resolve(arg1 * arg2)),
+  add: (arg1, arg2, env) => new Promise((resolve, reject) => resolve(arg1 + arg2)),
+  eq: (arg1, arg2, env) => new Promise((resolve, reject) => resolve(arg1 === arg2)),
+  lt: (arg1, arg2, env) => new Promise((resolve, reject) => resolve(arg1 < arg2)),
+  gt: (arg1, arg2, env) => new Promise((resolve, reject) => resolve(arg1 > arg2)),
+  lte: (arg1, arg2, env) => new Promise((resolve, reject) => resolve(arg1 <= arg2)),
+  gte: (arg1, arg2, env) => new Promise((resolve, reject) => resolve(arg1 >= arg2)),
+  log: (arg1, env) => new Promise((resolve, reject) => resolve(console.log(arg1))),
+  set: (variableName, primitiveValue, env) => {
+    return new Promise((resolve, reject) => {
+      env[variableName] = primitiveValue;
+      return resolve('test');
+    });
+  },
+  times: (times, expr, env) => {
+    // console.log('expr', expr);
     return Promise.resolve(times).then((n) => {
       const promiseList = [];
       for (let i = 0; i < n; i++) {
@@ -35,17 +73,18 @@ const env = {
     })
     .mapSeries((a) => {
       a.type = 'CallExpression';
-      return evaluate(a);
+      return evaluate(a, env);
     })
     .then((added) => Promise.resolve(env.browser));
   },
-  get: (path) =>
+  get: (path, env) =>
     new Promise((resolve, reject) => {
-      console.log('visiting:', path);
+      // console.log('visiting:', path);
       const startTime = new Date();
       env.browser.visit(path).then((blah) => {
         const endTime = new Date();
         env.responseTimes.push({
+          actionName: ['get', path],
           path: env.browser.request.url,
           statusCode: env.browser.response.status,
           elapsedTime: endTime - startTime,
@@ -54,19 +93,20 @@ const env = {
         resolve(env.browser);
       });
     }),
-  fill: (selector, value) =>
+  fill: (selector, value, env) =>
     new Promise((resolve, reject) => {
-      console.log('filling:', selector, 'with ', value);
+      // console.log('filling:', selector, 'with ', value);
       env.browser.fill(selector, value);
       resolve(env.browser);
     }),
-  pressButton: (selector) =>
+  pressButton: (selector, env) =>
     new Promise((resolve, reject) => {
-      console.log('pressing:', selector);
+      // console.log('pressing:', selector);
       const startTime = new Date();
       env.browser.pressButton(selector).then(() => {
         const endTime = new Date();
         env.responseTimes.push({
+          actionName: ['pressButton', selector],
           path: env.browser.request.url,
           statusCode: env.browser.response.status,
           elapsedTime: endTime - startTime,
@@ -77,54 +117,73 @@ const env = {
     }),
 };
 
-const evaluate = (action) => {
-  if (action.type === 'value') {
+
+const evaluate = (action, env) => {
+  if (action.type === 'primitive') {
     return Promise.resolve(action.value);
   }
 
-  if (action.type === 'word') {
+  if (action.type === 'variable') {
     if (action.name in env) {
       return env[action.name];
     }
-    return Promise.reject(`Undefined variable: ${action.name}`);
+    console.log(env);
+    return Promise.reject(`no such variable: ${action.name}`);
   }
 
+  if (action.type === 'function') {
+    env[action.operator] = (() => {
+      const argumentList = action.args;
+      return (...args) => {
+        const subEnv = Object.create(env);
+        for (let i = 0; i < argumentList.length; i++) {
+          subEnv[argumentList[i]] = args[i];
+        }
+        return Promise.mapSeries(action.params, (a) => evaluate(a, subEnv))
+          .then((resolvedParameters) => Promise.resolve(resolvedParameters));
+      };
+    })();
+    return Promise.resolve();
+  }
+
+  if (action.type === 'if') {
+    return evaluate(action.operator, env).then((bool) => {
+      if (bool) {
+        // it gets it's own environment in the if.
+        const subEnv = Object.create(env);
+        return Promise.mapSeries(action.params, (a) => evaluate(a, subEnv));
+      }
+      return Promise.resolve();
+    });
+  }
   if (action.type === 'CallExpression') {
-    const op = evaluate(action.operator);
+    const op = env[action.operator];
     if (typeof op !== 'function') {
-      return Promise.reject('Applying a non-function.');
+      return Promise.reject(`${op} not a function`);
     }
     // First we resolve all the parameters of the expression.  Then we
     // apply the expression with our expanded parameters.  And return that.
-    return Promise.mapSeries(action.params, (a) => evaluate(a))
-      .then((resolvedParameters) => op.apply(null, resolvedParameters));
+    return Promise.mapSeries(action.params, (a) => evaluate(a, env))
+      .then((resolvedParameters) => op.apply(null, resolvedParameters.concat(env)));
   }
-  //  Hand expression on without evaluation.
-  if (action.type === 'DelayExpression') {
-    // const op = evaluate(action.operator);
-    // return op.apply(null, action.params);
-    return action;
-  }
-  return Promise.reject(`Unknown type in ${action}`);
+  return Promise.reject(`Unknown type: '${action.type}' in ${action}`);
 };
 
 const run = (host, script) => {
-  env.browser = new Browser({ site: host });
+  globalEnv.browser = new Browser({ site: host });
   const actions = parser.parse(script.trim());
-
-  console.log('actions:', actions);
-
+  // console.log(actions);
   const scenarioStart = new Date();
   return Promise.mapSeries(actions,
     (action) => {
-      console.log('evaluating:', action.operator.name);
-      return evaluate(action).then((ret) => {
+      // console.log('evaluating:', action.operator.name);
+      return evaluate(action, globalEnv).then((ret) => {
       }).catch((e) => console.log('unresolved error', e));
-    }).then(() => {
+    }).then((r) => {
       const scenarioEnd = new Date();
       const times = {
         scenarioTime: scenarioEnd - scenarioStart,
-        transactionTimes: env.responseTimes,
+        transactionTimes: globalEnv.responseTimes,
       };
       return Promise.resolve(times);
     })

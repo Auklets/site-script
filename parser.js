@@ -2,51 +2,57 @@
 //
 const PEG = require('pegjs');
 
+
+
 const parserArguments = `
-start 
-  = nl* first:line rest:(nl+ data:line { return data; })* nl* { 
-    rest.unshift(first); return rest;
-  }
-    
-line = space first:command tail:(" " argument)* {
+start = line
+
+line = nl* first:linetype rest:(nl+ data:linetype { return data; })* {
+  rest.unshift(first); return rest;
+}
+
+linetype = if / function / command / comment 
+
+comment "comment"
+ = "#" text
+
+if "if" = "if(" head:command ")" _ "{" _ data:line _ "}" {
+  return {type:'if', operator:head, params: data}
+}
+
+command = space first:CallExpression tail:(" " argument)* {
   var params = [];
   for (var i = 0; i < tail.length; i++) {
     params.push(tail[i][1]);
   }
   return {type:'CallExpression', operator:first, params: params}
 }
-//
-argument "argument"
-  = func / JSON / number / string
-command "command"
-= head:[^\\t\\n\\r )]* {
-  return {type:"word", name:head.join("")};
+argument "argument" = subexpression / variable / primitive 
+subexpression = "(" space command:command space ")" {
+  return command;
 }
-func = "(" space space first:command tail:(" " argument)* space ")" {
-  var params = [];
-  for (var i = 0; i < tail.length; i++) {
-    params.push(tail[i][1]);
-  }
-  return {type:'DelayExpression', operator:first, params: params}
 
- }
-string "string" = s:[^\\t\\n\\r() ]+ {
-  return {type:"value", value:s.join("")};
+function "function"
+ = "func " head:text "(" args:functionargs ")" _ "{" _ data:line _ "}"  {
+  return {type:'function', operator:head, args: args, params: data}
 }
-number "number" = num:[0-9]+ {
-return {type: "value", value:parseInt(num.join(""), 10)};
+functionargs = first:$[^),]* tail:("," space each:$[^),]* { return each;} )* {
+  if (first === "") { return [];}
+  tail.unshift(first); return tail;
 }
-comment "comment"
- = "#"+ [^\\n\\r]* { return ''; }
-JSON = head:("{" $[^}]* "}") { 
-  return {type:"value", value:head.join("")};
+
+variable = "$" variable:$ns+ {
+  return {type:'variable', name:variable}
+} 
+CallExpression = $ns+
+primitive = primitive:$ns+ {
+  return {type:'primitive', value:primitive}
 }
-space "space" 
-  = [ ]*
-_ "whitespace"
-  = [ \\t\\n\\r]*
-nl "newline"
- = [\\n\\r]
+text = $ns*
+_ "whitespace" = [ \\t\\n\\r]*
+ns "non-special" = [^\\t\\n\\r(){} #]
+nl "newline" = [\\n\\r\\t]
+space "space" = [ ]*
 `;
 
 const parser = PEG.buildParser(parserArguments.trim());
