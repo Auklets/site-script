@@ -20,12 +20,19 @@ const Browser = require('zombie');
 // pressButton Login
 // get /links
 
+// set x 3
+// while(lte $x 4) {
+// set x (add $x 1)
+// log $x
+// }
+// log outofloop
+
 const scriptText = `
-set x 2
-if(lte $x 4) {
-log bill
+set x 3
+while(lte $x 4) {
+  set x (add $x 1)
+  log $x
 }
-log $x
 `;
 //
 // Test the parse of the string.  Returns an object with
@@ -45,11 +52,10 @@ const parseTest = (str) => {
   }
 };
 
-
 const globalEnv = {
   responseTimes: [],
   mult: (arg1, arg2, env) => new Promise((resolve, reject) => resolve(arg1 * arg2)),
-  add: (arg1, arg2, env) => new Promise((resolve, reject) => resolve(arg1 + arg2)),
+  add: (arg1, arg2, env) => new Promise((resolve, reject) => resolve(+arg1 + +arg2)),
   eq: (arg1, arg2, env) => new Promise((resolve, reject) => resolve(arg1 === arg2)),
   lt: (arg1, arg2, env) => new Promise((resolve, reject) => resolve(arg1 < arg2)),
   gt: (arg1, arg2, env) => new Promise((resolve, reject) => resolve(arg1 > arg2)),
@@ -58,8 +64,16 @@ const globalEnv = {
   log: (arg1, env) => new Promise((resolve, reject) => resolve(console.log(arg1))),
   set: (variableName, primitiveValue, env) => {
     return new Promise((resolve, reject) => {
-      env[variableName] = primitiveValue;
-      return resolve('test');
+      if (variableName in env) {
+        let searchEnv = env;
+        while (!Object.prototype.hasOwnProperty.call(searchEnv, variableName)) {
+          searchEnv = Object.getPrototypeOf(searchEnv);
+        }
+        searchEnv[variableName] = primitiveValue;
+      } else {
+        env[variableName] = primitiveValue;
+      }
+      return resolve();
     });
   },
   times: (times, expr, env) => {
@@ -84,7 +98,7 @@ const globalEnv = {
       env.browser.visit(path).then((blah) => {
         const endTime = new Date();
         env.responseTimes.push({
-          actionName: ['get', path],
+          actionName: `get ${path}`,
           path: env.browser.request.url,
           statusCode: env.browser.response.status,
           elapsedTime: endTime - startTime,
@@ -106,7 +120,7 @@ const globalEnv = {
       env.browser.pressButton(selector).then(() => {
         const endTime = new Date();
         env.responseTimes.push({
-          actionName: ['pressButton', selector],
+          actionName: `pressButton ${selector}`,
           path: env.browser.request.url,
           statusCode: env.browser.response.status,
           elapsedTime: endTime - startTime,
@@ -117,8 +131,24 @@ const globalEnv = {
     }),
 };
 
+// Creating a while loop with promises is an ugly affair.
+const promiseLoop = (action, env) => {
+  // console.log(action);
+  return Promise.resolve(evaluate(action.operator, env)).then(function loop(bool) {
+    //  console.log(i);
+    // console.log('bool:', bool);
+    const subEnv = Object.create(env);
+    if (bool) {
+      return Promise.mapSeries(action.params, (a) => evaluate(a, subEnv))
+        .then(() => Promise.resolve(evaluate(action.operator, env)))
+        .then(loop);
+    }
+    return Promise.resolve();
+  });
+};
 
 const evaluate = (action, env) => {
+  console.log('action', action);
   if (action.type === 'primitive') {
     return Promise.resolve(action.value);
   }
@@ -127,7 +157,7 @@ const evaluate = (action, env) => {
     if (action.name in env) {
       return env[action.name];
     }
-    console.log(env);
+    // console.log(env);
     return Promise.reject(`no such variable: ${action.name}`);
   }
 
@@ -145,7 +175,9 @@ const evaluate = (action, env) => {
     })();
     return Promise.resolve();
   }
-
+  if (action.type === 'while') {
+    return promiseLoop(action, env);
+  }
   if (action.type === 'if') {
     return evaluate(action.operator, env).then((bool) => {
       if (bool) {
@@ -172,7 +204,7 @@ const evaluate = (action, env) => {
 const run = (host, script) => {
   globalEnv.browser = new Browser({ site: host });
   const actions = parser.parse(script.trim());
-  // console.log(actions);
+  //  console.log(actions);
   const scenarioStart = new Date();
   return Promise.mapSeries(actions,
     (action) => {

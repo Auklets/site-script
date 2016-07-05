@@ -11,13 +11,13 @@ line = nl* first:linetype rest:(nl+ data:linetype { return data; })* {
   rest.unshift(first); return rest;
 }
 
-linetype = if / function / command / comment 
+linetype = ifwhile / function / command / comment 
 
 comment "comment"
  = "#" text
 
-if "if" = "if(" head:command ")" _ "{" _ data:line _ "}" {
-  return {type:'if', operator:head, params: data}
+ifwhile "if/while" = type:("if" / "while") "(" head:command ")" _ "{" _ data:line _ "}" {
+  return {type:type, operator:head, params: data}
 }
 
 command = space first:CallExpression tail:(" " argument)* {
