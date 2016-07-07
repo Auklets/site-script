@@ -1,6 +1,6 @@
 # site-script DSL
 
-Site-script is a Domain Specific language built on Javascript.
+site-script is a Domain Specific language built on Javascript.
 
 The high level goal was to write a language that a end user could use to script navigating a web page.
 That language is translated that into a Abstract Syntax Tree that is interpreted to script a headless
@@ -76,7 +76,7 @@ set x 'hi'
 
 x can now be referred to with a $ to access the value.
 
-set can also take a the value of a expression:
+set can also take the value of a expression:
 set (add $x 1)
 ```
 
@@ -145,12 +145,9 @@ Values scoped in functions are only available in those functions.  Parent variab
 
 
 
-
-
-
 Some of the resources I used are here:
 
-Highly recommend this resource.  Many elements were built off this structure.
+Highly recommend this resource.
 http://eloquentjavascript.net/11_language.html
 
 Covers many different parts of a language.
