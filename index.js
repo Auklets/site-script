@@ -4,6 +4,12 @@ const parser = require('./parser');
 const Browser = require('zombie');
 const globalEnv = require('./env.js');
 
+/*
+  tests (test number of transactions);
+  documentation
+*/
+
+
 const validityCheck = (actionList, gEnv) => {
   const isValid = (tree, errors, env) => {
     for (let i = 0; i < tree.length; i++) {
@@ -12,12 +18,12 @@ const validityCheck = (actionList, gEnv) => {
         if (env[action.operator] === undefined || typeof env[action.operator] !== 'function') {
           errors.push(`${action.operator} is not a function`);
         }
-        if (action.params !== undefined) {
-          validityCheck(action.params, errors, env);
-        }
       } else if (action.type === 'function') {
         // dummy action to assist in analysis.
         env[action.operator] = () => true;
+      }
+      if (action.params) {
+        isValid(action.params, errors, env);
       }
     }
     return errors;
@@ -36,16 +42,16 @@ const parseTest = (str) => {
   try {
     actions = parser.parse(str.trim());
   } catch (err) {
-    throw new SyntaxError(`${err.message} at 
+    return { success: false, message: `${err.message} at 
       line ${err.location.start.line} 
-      and column ${err.location.start.column}`);
+      and column ${err.location.start.column}` };
   }
   const errors = validityCheck(actions, globalEnv);
   if (errors.length > 0) {
-    throw new SyntaxError(`${errors.toString()}`);
+    return { success: false, message: `${errors.toString()}` };
   }
 
-  return actions;
+  return { success: true };
 };
 const evaluate = (action, env) => {
   // console.log('action', action);
@@ -118,12 +124,18 @@ const promiseLoop = (action, env) => {
   });
 };
 
-const run = (host, script, env) => {
+const run = (host, script) => {
   // Add some things to global environment
+  const env = Object.create(globalEnv);
   env.browser = new Browser({ site: host });
   env.responseTimes = [];
 
-  const actions = parseTest(script.trim());
+  let actions = [];
+  try {
+    actions = parser.parse(script.trim());
+  } catch (err) {
+    return Promise.reject(err);
+  }
   //  console.log(actions);
   const scenarioStart = new Date();
   return Promise.mapSeries(actions,
@@ -143,15 +155,30 @@ const run = (host, script, env) => {
 };
 
 const scriptText = `
-set x 1
-func bob(hi) {
-  test
-}
+set u (randomstring 10)
+set p (randomstring 10)
+
 get /
+get /signup
+fill username $u
+fill password $p
+pressButton 'Sign up'
+get /logout
+fill username $u
+fill password $p
+pressButton Login
+set x 0
+while(lte $x 4) {
+  get /create
+  fill url https://google.com
+  pressButton Shorten
+  set x (add $x 1)
+}
+get /logout
 `;
 
-// console.log(parseTest(scriptText));
-run('http://localhost:3000', scriptText, globalEnv)
+//  console.log(parseTest(scriptText));
+run('http://localhost:3000', scriptText)
 .then((data) => console.log('data:', data))
 .catch((err) => console.log('err', err));
 
