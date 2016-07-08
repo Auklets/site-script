@@ -154,7 +154,7 @@ const run = (host, script) => {
     .catch((fail) => console.log('failed for reason', fail));
 };
 
-const scriptText = `
+// const scriptText = `
 // set u (randomstring 10)
 // set p (randomstring 10)
 
@@ -177,7 +177,7 @@ const scriptText = `
 // get /logout
 // `;
 
-// //  console.log(parseTest(scriptText));
+
 // run('http://localhost:3000', scriptText)
 // .then((data) => console.log('data:', data))
 // .catch((err) => console.log('err', err));

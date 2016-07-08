@@ -1,6 +1,6 @@
 {
   "name": "site-script",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Web oriented DSL that uses JavaScript as a base language and interpreter",
   "main": "index.js",
   "scripts": {
