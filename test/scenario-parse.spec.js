@@ -1,5 +1,5 @@
 /* eslint-env mocha */
-// const should = require('chai').should();
+const should = require('chai').should();
 const parser = require('../parser.js');
 
 describe('Parse should understand the syntax and fail appropriately', () => {
@@ -33,24 +33,6 @@ func test(number) {
     `;
     (() => parser.parse(script.trim())).should.not.throw('SyntaxError');
   });
-
-  xit('handles newlines and spaces between functions', () => {
-    const script = `site('www.hackreactor.com')
-                  .login('/login');`;
-    (() => parser.parse(script.trim())).should.not.throw('SyntaxError');
-  });
-
-  xit('displays the correct line and column when failing', () => {
-    const script = `site('www.hackreactor.com'.login('/login');`;
-    try {
-      parser.parse(script);
-    } catch (err) {
-      (err.location.start.line).should.equal(1);
-      (err.location.start.column).should.equal(27);
-      //  err.location.start.line, ', column', err.location.start.column
-      //  .should.not.throw('SyntaxError');
-    }
-  });
 });
 
 describe('Parse should get the correct number of commands and arguments', () => {
@@ -74,19 +56,12 @@ describe('Parse should get the correct number of commands and arguments', () => 
 });
 
 describe('Parse should get the correct action and arguments', () => {
-  xit('gets the function name', () => {
-    const script = 'site();';
-    parser.parse(script)[0].action.should.equal('site');
+  it('gets the function name', () => {
+    const script = 'get /';
+    parser.parse(script.trim())[0].operator.should.equal('get');
   });
-  xit('gets both strings and numers as argument ', () => {
-    const script = 'site(\'1\',2,3);';
-    parser.parse(script)[0].args.should.eql(['1', 2, 3]);
-  });
-
-  describe('Parse should read json', () => {
-    xit('gets the function name', () => {
-      const script = `values({bill: 'one'});`;
-      parser.parse(script)[0].args[0].should.eql({ bill: 'one' });
-    });
+  it('gets both strings with spaces between single quotes', () => {
+    const script = 'site \'space arg\' arg';
+    parser.parse(script.trim())[0].params[0].value.should.eql('space arg');
   });
 });

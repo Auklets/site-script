@@ -155,31 +155,31 @@ const run = (host, script) => {
 };
 
 const scriptText = `
-set u (randomstring 10)
-set p (randomstring 10)
+// set u (randomstring 10)
+// set p (randomstring 10)
 
-get /
-get /signup
-fill username $u
-fill password $p
-pressButton 'Sign up'
-get /logout
-fill username $u
-fill password $p
-pressButton Login
-set x 0
-while(lte $x 4) {
-  get /create
-  fill url https://google.com
-  pressButton Shorten
-  set x (add $x 1)
-}
-get /logout
-`;
+// get /
+// get /signup
+// fill username $u
+// fill password $p
+// pressButton 'Sign up'
+// get /logout
+// fill username $u
+// fill password $p
+// pressButton Login
+// set x 0
+// while(lte $x 4) {
+//   get /create
+//   fill url https://google.com
+//   pressButton Shorten
+//   set x (add $x 1)
+// }
+// get /logout
+// `;
 
-//  console.log(parseTest(scriptText));
-run('http://localhost:3000', scriptText)
-.then((data) => console.log('data:', data))
-.catch((err) => console.log('err', err));
+// //  console.log(parseTest(scriptText));
+// run('http://localhost:3000', scriptText)
+// .then((data) => console.log('data:', data))
+// .catch((err) => console.log('err', err));
 
-module.exports = { run };
+module.exports = { run, parseTest };
